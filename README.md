@@ -4,11 +4,13 @@ Open-source personal demo inspired by the BladeX IoT architecture:
 
 `category -> product -> device -> MQTT/HTTP ingest -> thing model validation -> storage -> rules -> dashboard -> AI assistant`
 
+Current working version: `v0.2.0-dev`.
+
 ## Services
 
 - `backend`: FastAPI API, business data, OpenAPI, simple AI assistant.
 - `data-worker`: MQTT subscriber, message parser, model validator, rule trigger.
-- `frontend`: Vue 3 dashboard.
+- `frontend`: Vue 3 dashboard and management console.
 - `simulator`: Python MQTT device simulator.
 - `emqx`: MQTT broker.
 - `postgres`: business data and first-version time-series logs.
@@ -30,3 +32,14 @@ docker compose up --build
 - EMQX dashboard: http://localhost:18083, user `admin`, password `public`
 
 The backend seeds one product and one device matching the simulator.
+
+## Demo Acceptance Chain
+
+The current demo can show:
+
+```text
+create category -> create product -> configure thing model -> create device
+-> simulator publishes MQTT telemetry -> backend shows device online
+-> dashboard shows latest data and trend -> rule triggers alarm
+-> AI explains why the device alarm fired
+```

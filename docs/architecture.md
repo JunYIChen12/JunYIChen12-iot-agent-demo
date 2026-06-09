@@ -19,7 +19,7 @@ category -> product -> device -> MQTT/HTTP ingest -> topic routing -> thing mode
 | Cache/status layer | Online state and future cache/pub-sub | Redis |
 | Device simulator | Generates telemetry for demos | Python `paho-mqtt` simulator |
 | Frontend console | Dashboard and operator UI | Vue 3, Element Plus, ECharts |
-| AI assistant | Human-friendly diagnosis and platform guidance | FastAPI endpoint in v0.1.0 |
+| AI assistant | Human-friendly diagnosis and platform guidance | FastAPI endpoint with rule-based tools |
 
 ## Runtime Flow
 
@@ -36,8 +36,23 @@ flowchart TD
     F --> J["FastAPI Dashboard API"]
     G --> J
     I --> J
-    J --> K["Vue Dashboard"]
+    J --> K["Vue Management Console"]
     J --> L["AI Assistant"]
+```
+
+## Management Flow
+
+```mermaid
+flowchart LR
+    A["Create Category"] --> B["Create Product"]
+    B --> C["Configure Thing Model"]
+    C --> D["Create Device"]
+    D --> E["Start Simulator"]
+    E --> F["MQTT Property Report"]
+    F --> G["Device Online"]
+    F --> H["Latest Data and Trend"]
+    F --> I["Threshold Rule Alarm"]
+    I --> J["AI Alarm Explanation"]
 ```
 
 ## Topic Protocol
@@ -71,7 +86,7 @@ Payload:
 }
 ```
 
-## v0.1.0 Scope
+## Current Scope
 
 Included:
 
@@ -80,7 +95,8 @@ Included:
 - MQTT property reports.
 - First-version property log storage in PostgreSQL.
 - Dashboard and rule alarm display.
-- Rule-based AI assistant.
+- Management console for categories, products, devices, thing models, and rules.
+- Rule-based AI assistant with alarm explanation.
 
 Deferred:
 

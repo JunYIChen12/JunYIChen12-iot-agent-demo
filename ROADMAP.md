@@ -19,12 +19,16 @@ Status: complete
 
 Goal: make the platform configurable from the UI.
 
-- Product CRUD page.
-- Device CRUD page.
-- Thing model editor.
-- Rule editor.
-- Manual property report testing.
-- Broker credential alignment for demo devices.
+Status: in progress
+
+- Category management page: landed in `v0.2.0-dev`.
+- Product create/list page: landed in `v0.2.0-dev`.
+- Device create/list page: landed in `v0.2.0-dev`.
+- Thing model create/list page: landed in `v0.2.0-dev`.
+- Rule create/list page: landed in `v0.2.0-dev`.
+- AI alarm explanation fix: landed in `v0.2.0-dev`.
+- Manual property report testing: next.
+- Broker credential alignment for demo devices: next.
 
 ## v0.3.0 - Device Control
 

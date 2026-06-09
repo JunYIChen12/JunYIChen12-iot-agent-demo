@@ -117,11 +117,12 @@ def _evaluate_rules(db: Session, product: Product, device: Device, values: dict[
         except (TypeError, ValueError):
             triggered = op(str(values[rule.identifier]), str(rule.threshold))
         if triggered:
+            message = rule.message.rstrip("。.,， ")
             db.add(
                 AlarmLog(
                     rule_id=rule.id,
                     product_key=product.product_key,
                     device_name=device.device_name,
-                    content=f"{rule.message} 当前值: {values[rule.identifier]}",
+                    content=f"{message}，当前值 {values[rule.identifier]}",
                 )
             )

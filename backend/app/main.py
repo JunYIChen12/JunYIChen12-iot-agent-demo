@@ -19,7 +19,7 @@ from app.seed import seed_demo_data
 from app.services import ingest_property_payload
 
 
-app = FastAPI(title="IoT Agent Demo", version="0.1.0")
+app = FastAPI(title="IoT Agent Demo", version="0.2.0-dev")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

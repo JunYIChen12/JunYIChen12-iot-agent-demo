@@ -2,6 +2,39 @@
 
 All notable changes to this project are documented here.
 
+## v0.2.0-dev - 2026-06-09
+
+Management console iteration aligned with the BladeX-style commercial architecture.
+
+### Added
+
+- Sidebar management console with modules for overview, categories, products, devices, thing models, rules, logs, and AI assistant.
+- Frontend create flows for categories, products, devices, thing model rows, and threshold rules.
+- Full data refresh across dashboard and management modules.
+- AI assistant default prompt for explaining why `demo-device-001` triggered an alarm.
+- BladeX-style chain mapping in the AI assistant page.
+
+### Changed
+
+- Backend version is now `0.2.0-dev`.
+- Seed data now normalizes the demo category, product, thing model, and rule on startup.
+- Alarm explanation intent now takes priority over generic status diagnosis.
+- Alarm content formatting avoids duplicated punctuation.
+
+### Verified
+
+- Docker images build for backend, data-worker, and frontend.
+- Python backend modules compile.
+- Frontend production build succeeds.
+- HTTP property post triggers device online status, property logs, and temperature alarm.
+- Browser verification confirms every management module opens and Chinese AI alarm explanation works.
+
+### Still Deferred
+
+- Dedicated manual property-post test page.
+- Broker-level device credential enforcement.
+- Formal `v0.2.0` release tag.
+
 ## v0.1.0 - 2026-06-09
 
 First runnable personal IoT Agent Demo baseline.
