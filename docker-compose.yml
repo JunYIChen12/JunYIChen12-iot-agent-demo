@@ -1,0 +1,98 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: iot_demo
+      POSTGRES_USER: iot
+      POSTGRES_PASSWORD: iot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iot -d iot_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  emqx:
+    image: emqx:5.8
+    environment:
+      EMQX_DASHBOARD__DEFAULT_USERNAME: admin
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: public
+    ports:
+      - "1883:1883"
+      - "8083:8083"
+      - "18083:18083"
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://iot:iot@postgres:5432/iot_demo
+      REDIS_URL: redis://redis:6379/0
+      MQTT_HOST: emqx
+      MQTT_PORT: "1883"
+      DEMO_TOPIC_PREFIX: /demo
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      emqx:
+        condition: service_started
+
+  data-worker:
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://iot:iot@postgres:5432/iot_demo
+      REDIS_URL: redis://redis:6379/0
+      MQTT_HOST: emqx
+      MQTT_PORT: "1883"
+      DEMO_TOPIC_PREFIX: /demo
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      emqx:
+        condition: service_started
+
+  simulator:
+    build:
+      context: ./simulator
+    environment:
+      MQTT_HOST: emqx
+      MQTT_PORT: "1883"
+      PRODUCT_KEY: TEMP_SENSOR
+      DEVICE_NAME: demo-device-001
+      DEVICE_SECRET: demo-secret
+      DEMO_TOPIC_PREFIX: /demo
+    depends_on:
+      emqx:
+        condition: service_started
+      backend:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      VITE_API_BASE: http://localhost:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      backend:
+        condition: service_started
+
+volumes:
+  postgres_data:
