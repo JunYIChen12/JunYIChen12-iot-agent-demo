@@ -5,10 +5,11 @@ from sqlalchemy.orm import Session
 
 from app.agent import answer_agent_message
 from app.db import Base, engine, get_db
-from app.models import AlarmLog, Category, Device, DevicePropertyLog, Product, Rule, ThingModel
+from app.models import AlarmLog, Category, CategoryThingModel, Device, DevicePropertyLog, Product, Rule, ThingModel
 from app.schemas import (
     AgentRequest,
     CategoryCreate,
+    CategoryThingModelCreate,
     DeviceCreate,
     HttpPropertyPost,
     ProductCreate,
@@ -16,7 +17,7 @@ from app.schemas import (
     ThingModelCreate,
 )
 from app.seed import seed_demo_data
-from app.services import ingest_property_payload
+from app.services import effective_thing_models, ingest_property_payload
 
 
 app = FastAPI(title="IoT Agent Demo", version="0.2.0-dev")
@@ -51,6 +52,8 @@ def dashboard(db: Session = Depends(get_db)) -> dict:
             "online_devices": db.scalar(select(func.count(Device.id)).where(Device.status == "online")),
             "property_logs": db.scalar(select(func.count(DevicePropertyLog.id))),
             "alarms": db.scalar(select(func.count(AlarmLog.id))),
+            "category_thing_models": db.scalar(select(func.count(CategoryThingModel.id))),
+            "product_thing_models": db.scalar(select(func.count(ThingModel.id))),
         },
         "devices": [_device_dict(d) for d in db.scalars(select(Device).order_by(Device.id)).all()],
         "latest_logs": [_log_dict(l) for l in db.scalars(select(DevicePropertyLog).order_by(desc(DevicePropertyLog.reported_at)).limit(20)).all()],
@@ -70,6 +73,26 @@ def create_category(payload: CategoryCreate, db: Session = Depends(get_db)) -> d
     db.commit()
     db.refresh(row)
     return _category_dict(row)
+
+
+@app.get("/api/category-thing-models")
+def list_category_thing_models(
+    category_id: int | None = None,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    stmt = select(CategoryThingModel).order_by(CategoryThingModel.id)
+    if category_id:
+        stmt = stmt.where(CategoryThingModel.category_id == category_id)
+    return [_category_thing_model_dict(m) for m in db.scalars(stmt).all()]
+
+
+@app.post("/api/category-thing-models")
+def create_category_thing_model(payload: CategoryThingModelCreate, db: Session = Depends(get_db)) -> dict:
+    row = CategoryThingModel(**payload.model_dump())
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return _category_thing_model_dict(row)
 
 
 @app.get("/api/products")
@@ -115,6 +138,14 @@ def create_thing_model(payload: ThingModelCreate, db: Session = Depends(get_db))
     db.commit()
     db.refresh(row)
     return _thing_model_dict(row)
+
+
+@app.get("/api/products/{product_id}/effective-thing-models")
+def get_effective_thing_models(product_id: int, db: Session = Depends(get_db)) -> list[dict]:
+    product = db.get(Product, product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return [_effective_thing_model_dict(m) for m in effective_thing_models(db, product)]
 
 
 @app.get("/api/rules")
@@ -187,7 +218,44 @@ def _thing_model_dict(row: ThingModel) -> dict:
         "data_type": row.data_type,
         "unit": row.unit,
         "access_mode": row.access_mode,
+        "source": "product",
     }
+
+
+def _category_thing_model_dict(row: CategoryThingModel) -> dict:
+    return {
+        "id": row.id,
+        "category_id": row.category_id,
+        "identifier": row.identifier,
+        "name": row.name,
+        "model_type": row.model_type,
+        "data_type": row.data_type,
+        "unit": row.unit,
+        "access_mode": row.access_mode,
+        "required": row.required,
+        "source": "category",
+    }
+
+
+def _effective_thing_model_dict(row: CategoryThingModel | ThingModel) -> dict:
+    data = {
+        "id": row.id,
+        "identifier": row.identifier,
+        "name": row.name,
+        "model_type": row.model_type,
+        "data_type": row.data_type,
+        "unit": row.unit,
+        "access_mode": row.access_mode,
+    }
+    if isinstance(row, CategoryThingModel):
+        data["category_id"] = row.category_id
+        data["source"] = "category"
+        data["required"] = row.required
+    else:
+        data["product_id"] = row.product_id
+        data["source"] = "product"
+        data["required"] = False
+    return data
 
 
 def _rule_dict(row: Rule) -> dict:

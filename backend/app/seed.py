@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Category, Device, Product, Rule, ThingModel
+from app.models import Category, CategoryThingModel, Device, Product, Rule, ThingModel
 
 
 def seed_demo_data(db: Session) -> None:
@@ -31,12 +31,44 @@ def seed_demo_data(db: Session) -> None:
         product.protocol = "mqtt"
         product.status = "online"
 
-    models = [
+    category_models = [
+        ("temperature", "温度", "float", "C"),
+        ("humidity", "湿度", "float", "%"),
+    ]
+    for identifier, name, data_type, unit in category_models:
+        exists = db.scalar(
+            select(CategoryThingModel).where(
+                CategoryThingModel.category_id == category.id,
+                CategoryThingModel.identifier == identifier,
+                CategoryThingModel.model_type == "property",
+            )
+        )
+        if not exists:
+            db.add(
+                CategoryThingModel(
+                    category_id=category.id,
+                    identifier=identifier,
+                    name=name,
+                    model_type="property",
+                    data_type=data_type,
+                    access_mode="read",
+                    unit=unit,
+                    required=True,
+                )
+            )
+        else:
+            exists.name = name
+            exists.data_type = data_type
+            exists.unit = unit
+            exists.access_mode = "read"
+            exists.required = True
+
+    product_models = [
         ("temperature", "温度", "float", "C"),
         ("humidity", "湿度", "float", "%"),
         ("battery", "电量", "int", "%"),
     ]
-    for identifier, name, data_type, unit in models:
+    for identifier, name, data_type, unit in product_models:
         exists = db.scalar(
             select(ThingModel).where(
                 ThingModel.product_id == product.id,
@@ -44,6 +76,10 @@ def seed_demo_data(db: Session) -> None:
                 ThingModel.model_type == "property",
             )
         )
+        if identifier in {"temperature", "humidity"}:
+            if exists:
+                db.delete(exists)
+            continue
         if not exists:
             db.add(
                 ThingModel(

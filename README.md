@@ -2,7 +2,7 @@
 
 Open-source personal demo inspired by the BladeX IoT architecture:
 
-`category -> product -> device -> MQTT/HTTP ingest -> thing model validation -> storage -> rules -> dashboard -> AI assistant`
+`category thing model -> product inheritance/extension -> device -> MQTT/HTTP ingest -> effective thing model validation -> storage -> rules -> dashboard -> AI assistant`
 
 Current working version: `v0.2.0-dev`.
 
@@ -42,4 +42,10 @@ create category -> create product -> configure thing model -> create device
 -> simulator publishes MQTT telemetry -> backend shows device online
 -> dashboard shows latest data and trend -> rule triggers alarm
 -> AI explains why the device alarm fired
+```
+
+The thing model layer follows the hierarchy used by BladeX-style IoT platforms:
+
+```text
+category common thing model -> product inherits and extends -> device owns the final product model
 ```

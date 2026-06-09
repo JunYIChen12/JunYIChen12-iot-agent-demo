@@ -29,6 +29,7 @@ class Category(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     products: Mapped[list["Product"]] = relationship(back_populates="category")
+    thing_models: Mapped[list["CategoryThingModel"]] = relationship(back_populates="category")
 
 
 class Product(Base):
@@ -80,6 +81,26 @@ class ThingModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     product: Mapped[Product] = relationship(back_populates="thing_models")
+
+
+class CategoryThingModel(Base):
+    __tablename__ = "category_thing_models"
+    __table_args__ = (
+        UniqueConstraint("category_id", "identifier", "model_type", name="uq_category_model_identifier_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
+    identifier: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(160))
+    model_type: Mapped[str] = mapped_column(String(40), default=ModelType.property.value)
+    data_type: Mapped[str] = mapped_column(String(40), default="float")
+    unit: Mapped[str] = mapped_column(String(40), default="")
+    access_mode: Mapped[str] = mapped_column(String(40), default="read")
+    required: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    category: Mapped[Category] = relationship(back_populates="thing_models")
 
 
 class DevicePropertyLog(Base):

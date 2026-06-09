@@ -10,6 +10,8 @@ Management console iteration aligned with the BladeX-style commercial architectu
 
 - Sidebar management console with modules for overview, categories, products, devices, thing models, rules, logs, and AI assistant.
 - Frontend create flows for categories, products, devices, thing model rows, and threshold rules.
+- Category-level thing model definitions that products inherit.
+- Product-level thing model extensions and effective product thing model API.
 - Full data refresh across dashboard and management modules.
 - AI assistant default prompt for explaining why `demo-device-001` triggered an alarm.
 - BladeX-style chain mapping in the AI assistant page.
@@ -17,6 +19,8 @@ Management console iteration aligned with the BladeX-style commercial architectu
 ### Changed
 
 - Backend version is now `0.2.0-dev`.
+- Device telemetry validation now uses the effective thing model: category inherited definitions merged with product extensions.
+- Seed data now puts `temperature` and `humidity` on the category and `battery` on the product.
 - Seed data now normalizes the demo category, product, thing model, and rule on startup.
 - Alarm explanation intent now takes priority over generic status diagnosis.
 - Alarm content formatting avoids duplicated punctuation.
@@ -28,6 +32,7 @@ Management console iteration aligned with the BladeX-style commercial architectu
 - Frontend production build succeeds.
 - HTTP property post triggers device online status, property logs, and temperature alarm.
 - Browser verification confirms every management module opens and Chinese AI alarm explanation works.
+- Browser verification confirms the thing model page shows category inheritance, product extension, and the final merged model.
 
 ### Still Deferred
 

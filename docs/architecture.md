@@ -5,7 +5,8 @@ This project follows the same broad shape as a BladeX-style IoT platform, but us
 ## Target Chain
 
 ```text
-category -> product -> device -> MQTT/HTTP ingest -> topic routing -> thing model validation -> storage -> rule alarm -> dashboard -> AI assistant
+category thing model -> product inherits and extends -> device instance -> MQTT/HTTP ingest
+-> effective thing model validation -> storage -> rule alarm -> dashboard -> AI assistant
 ```
 
 ## Component Mapping
@@ -15,7 +16,7 @@ category -> product -> device -> MQTT/HTTP ingest -> topic routing -> thing mode
 | `blade-server` style business service | OpenAPI, device/product/rule management, dashboard APIs | `backend` with FastAPI |
 | `blade-broker` style message broker | MQTT connectivity and topic routing | EMQX Community |
 | `blade-data` style data flow service | Subscribe, parse, validate, store, trigger rules | `data-worker` |
-| Business database | Products, devices, models, rules, alarms | PostgreSQL |
+| Business database | Categories, category thing models, products, product thing models, devices, rules, alarms | PostgreSQL |
 | Cache/status layer | Online state and future cache/pub-sub | Redis |
 | Device simulator | Generates telemetry for demos | Python `paho-mqtt` simulator |
 | Frontend console | Dashboard and operator UI | Vue 3, Element Plus, ECharts |
@@ -28,7 +29,7 @@ flowchart TD
     A["Simulator / Device"] --> B["EMQX MQTT Broker"]
     B --> C["data-worker"]
     C --> D["Topic Parser"]
-    D --> E["Thing Model Validator"]
+    D --> E["Effective Thing Model Validator"]
     E --> F["PostgreSQL Property Logs"]
     E --> G["Device Status Update"]
     E --> H["Threshold Rule Engine"]
@@ -44,16 +45,25 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-    A["Create Category"] --> B["Create Product"]
-    B --> C["Configure Thing Model"]
-    C --> D["Create Device"]
-    D --> E["Start Simulator"]
-    E --> F["MQTT Property Report"]
-    F --> G["Device Online"]
-    F --> H["Latest Data and Trend"]
-    F --> I["Threshold Rule Alarm"]
+    A["Create Category"] --> B["Define Category Thing Model"]
+    B --> C["Create Product"]
+    C --> D["Inherit Category Model"]
+    D --> E["Extend Product Model"]
+    E --> F["Create Device Instance"]
+    F --> G["MQTT Property Report"]
+    G --> H["Validate Against Effective Model"]
+    H --> I["Rule Alarm"]
     I --> J["AI Alarm Explanation"]
 ```
+
+## Thing Model Inheritance
+
+The demo now models the BladeX-style hierarchy directly:
+
+- Category thing models define common abilities for a device class, such as `temperature` and `humidity` for sensors.
+- Product thing models store only product-specific extensions or overrides, such as `battery` for `TEMP_SENSOR`.
+- A device is an instance of a product and is validated against the effective model: category inherited models merged with product extensions.
+- When product and category define the same `identifier` and `model_type`, the product-level definition wins.
 
 ## Topic Protocol
 
@@ -91,11 +101,11 @@ Payload:
 Included:
 
 - Single-node Docker Compose environment.
-- One seeded category, product, device, thing model, and threshold rule.
+- One seeded category, product, device, inherited thing model set, and threshold rule.
 - MQTT property reports.
 - First-version property log storage in PostgreSQL.
 - Dashboard and rule alarm display.
-- Management console for categories, products, devices, thing models, and rules.
+- Management console for categories, products, devices, category thing models, product thing models, effective thing models, and rules.
 - Rule-based AI assistant with alarm explanation.
 
 Deferred:

@@ -1,7 +1,8 @@
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import AlarmLog, Device, DevicePropertyLog, Product, ThingModel
+from app.models import AlarmLog, Device, DevicePropertyLog, Product
+from app.services import effective_thing_models
 
 
 def answer_agent_message(db: Session, message: str) -> dict:
@@ -27,9 +28,12 @@ def answer_agent_message(db: Session, message: str) -> dict:
         product = db.scalar(select(Product).where(Product.product_key == "TEMP_SENSOR"))
         if not product:
             return {"answer": "当前还没有演示产品。", "actions": ["query_product"]}
-        models = db.scalars(select(ThingModel).where(ThingModel.product_id == product.id)).all()
-        text = "、".join([f"{m.identifier}({m.data_type}{m.unit})" for m in models])
-        return {"answer": f"TEMP_SENSOR 的物模型属性包括：{text}。", "actions": ["query_thing_model"]}
+        models = effective_thing_models(db, product)
+        text = "、".join([f"{m.identifier}({m.model_type}/{m.data_type}{m.unit})" for m in models])
+        return {
+            "answer": f"TEMP_SENSOR 的最终物模型来自品类继承和产品扩展，当前包括：{text}。",
+            "actions": ["query_effective_thing_model"],
+        }
 
     return {
         "answer": (

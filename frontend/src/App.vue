@@ -11,26 +11,23 @@ const agentInput = ref('为什么 demo-device-001 告警？')
 const agentAnswer = ref('')
 const notice = ref('')
 
-const dashboard = ref<any>({
-  stats: {},
-  devices: [],
-  latest_logs: [],
-  alarms: [],
-})
+const dashboard = ref<any>({ stats: {}, devices: [], latest_logs: [], alarms: [] })
 const categories = ref<any[]>([])
 const products = ref<any[]>([])
 const devices = ref<any[]>([])
+const categoryThingModels = ref<any[]>([])
 const thingModels = ref<any[]>([])
+const effectiveThingModels = ref<any[]>([])
 const rules = ref<any[]>([])
 
 const categoryForm = reactive({ name: '演示传感器品类', industry: '智能工业', scene: '环境监测' })
 const productForm = reactive({ category_id: 1, product_key: 'TEMP_SENSOR_002', name: '演示温湿度传感器', protocol: 'mqtt' })
 const deviceForm = reactive({ product_id: 1, device_name: 'demo-device-002', device_secret: 'demo-secret-002', unique_no: 'SN-DEMO-002' })
-const modelForm = reactive({ product_id: 1, identifier: 'temperature', name: '温度', model_type: 'property', data_type: 'float', unit: 'C', access_mode: 'read' })
+const categoryModelForm = reactive({ category_id: 1, identifier: 'temperature', name: '温度', model_type: 'property', data_type: 'float', unit: 'C', access_mode: 'read', required: true })
+const productModelForm = reactive({ product_id: 1, identifier: 'battery', name: '电量', model_type: 'property', data_type: 'int', unit: '%', access_mode: 'read' })
 const ruleForm = reactive({ product_id: 1, name: '温度过高告警', identifier: 'temperature', operator: '>', threshold: 50, message: '温度超过 50C，请检查设备环境', enabled: true })
 
 let chart: echarts.ECharts | null = null
-let refreshTimer = 0
 
 const navItems = [
   { key: 'overview', label: '总览' },
@@ -56,30 +53,33 @@ async function fetchJson(path: string, options?: RequestInit) {
     ...options,
   })
   const data = await res.json().catch(() => ({}))
-  if (!res.ok) {
-    throw new Error(data?.detail?.errors?.join('；') || data?.detail || '请求失败')
-  }
+  if (!res.ok) throw new Error(data?.detail?.errors?.join('；') || data?.detail || '请求失败')
   return data
 }
 
 async function refresh() {
   loading.value = true
   try {
-    const [dashboardData, categoryData, productData, deviceData, modelData, ruleData] = await Promise.all([
-      fetchJson('/api/dashboard'),
-      fetchJson('/api/categories'),
-      fetchJson('/api/products'),
-      fetchJson('/api/devices'),
-      fetchJson('/api/thing-models'),
-      fetchJson('/api/rules'),
-    ])
+    const [dashboardData, categoryData, productData, deviceData, categoryModelData, productModelData, ruleData] =
+      await Promise.all([
+        fetchJson('/api/dashboard'),
+        fetchJson('/api/categories'),
+        fetchJson('/api/products'),
+        fetchJson('/api/devices'),
+        fetchJson('/api/category-thing-models'),
+        fetchJson('/api/thing-models'),
+        fetchJson('/api/rules'),
+      ])
+
     dashboard.value = dashboardData
     categories.value = categoryData
     products.value = productData
     devices.value = deviceData
-    thingModels.value = modelData
+    categoryThingModels.value = categoryModelData
+    thingModels.value = productModelData
     rules.value = ruleData
     syncDefaultIds()
+    await loadEffectiveThingModels()
     await nextTick()
     renderChart()
   } finally {
@@ -90,14 +90,23 @@ async function refresh() {
 function syncDefaultIds() {
   const firstCategory = categories.value[0]?.id
   const firstProduct = products.value[0]?.id
-  if (firstCategory && !categories.value.some((item) => item.id === productForm.category_id)) {
-    productForm.category_id = firstCategory
+  if (firstCategory) {
+    if (!categories.value.some((item) => item.id === productForm.category_id)) productForm.category_id = firstCategory
+    if (!categories.value.some((item) => item.id === categoryModelForm.category_id)) categoryModelForm.category_id = firstCategory
   }
   if (firstProduct) {
     if (!products.value.some((item) => item.id === deviceForm.product_id)) deviceForm.product_id = firstProduct
-    if (!products.value.some((item) => item.id === modelForm.product_id)) modelForm.product_id = firstProduct
+    if (!products.value.some((item) => item.id === productModelForm.product_id)) productModelForm.product_id = firstProduct
     if (!products.value.some((item) => item.id === ruleForm.product_id)) ruleForm.product_id = firstProduct
   }
+}
+
+async function loadEffectiveThingModels() {
+  if (!productModelForm.product_id) {
+    effectiveThingModels.value = []
+    return
+  }
+  effectiveThingModels.value = await fetchJson(`/api/products/${productModelForm.product_id}/effective-thing-models`)
 }
 
 async function createRecord(path: string, payload: Record<string, unknown>, label: string) {
@@ -124,8 +133,9 @@ async function createProduct() {
   const created = await createRecord('/api/products', productForm, '产品')
   if (created?.id) {
     deviceForm.product_id = created.id
-    modelForm.product_id = created.id
+    productModelForm.product_id = created.id
     ruleForm.product_id = created.id
+    await loadEffectiveThingModels()
   }
 }
 
@@ -133,8 +143,12 @@ function createDevice() {
   return createRecord('/api/devices', deviceForm, '设备')
 }
 
-function createThingModel() {
-  return createRecord('/api/thing-models', modelForm, '物模型')
+function createCategoryThingModel() {
+  return createRecord('/api/category-thing-models', categoryModelForm, '品类物模型')
+}
+
+function createProductThingModel() {
+  return createRecord('/api/thing-models', productModelForm, '产品物模型')
 }
 
 function createRule() {
@@ -156,21 +170,16 @@ function renderChart() {
   chart.setOption({
     grid: { left: 42, right: 18, top: 24, bottom: 36 },
     tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: latestTemperature.value.map((p: any) => new Date(p.reported_at).toLocaleTimeString()),
-    },
+    xAxis: { type: 'category', data: latestTemperature.value.map((p: any) => new Date(p.reported_at).toLocaleTimeString()) },
     yAxis: { type: 'value', name: 'C' },
-    series: [
-      {
-        name: 'temperature',
-        type: 'line',
-        smooth: true,
-        showSymbol: false,
-        data: latestTemperature.value.map((p: any) => Number(p.value)),
-        areaStyle: { opacity: 0.12 },
-      },
-    ],
+    series: [{
+      name: 'temperature',
+      type: 'line',
+      smooth: true,
+      showSymbol: false,
+      data: latestTemperature.value.map((p: any) => Number(p.value)),
+      areaStyle: { opacity: 0.12 },
+    }],
   })
 }
 
@@ -178,9 +187,13 @@ function productName(productId: number) {
   return products.value.find((item) => item.id === productId)?.name || `产品 ${productId}`
 }
 
+function categoryName(categoryId: number) {
+  return categories.value.find((item) => item.id === categoryId)?.name || `品类 ${categoryId}`
+}
+
 onMounted(() => {
   refresh()
-  refreshTimer = window.setInterval(refresh, 5000)
+  window.setInterval(refresh, 5000)
 })
 </script>
 
@@ -189,16 +202,10 @@ onMounted(() => {
     <aside class="sidebar">
       <div class="brand">
         <strong>IoT Agent Demo</strong>
-        <span>v0.2 管理台</span>
+        <span>v0.2 继承物模型</span>
       </div>
       <nav>
-        <button
-          v-for="item in navItems"
-          :key="item.key"
-          :class="{ active: activeView === item.key }"
-          type="button"
-          @click="activeView = item.key"
-        >
+        <button v-for="item in navItems" :key="item.key" :class="{ active: activeView === item.key }" type="button" @click="activeView = item.key">
           {{ item.label }}
         </button>
       </nav>
@@ -208,7 +215,7 @@ onMounted(() => {
       <header class="topbar">
         <div>
           <h1>物联网演示控制台</h1>
-          <p>品类 - 产品 - 设备 - 物模型 - MQTT - 数据流转 - 规则告警 - AI 诊断</p>
+          <p>品类通用物模型 -> 产品继承并扩展 -> 设备实例拥有最终能力 -> MQTT 上报校验</p>
         </div>
         <el-button :loading="loading" type="primary" @click="refresh">刷新</el-button>
       </header>
@@ -220,25 +227,17 @@ onMounted(() => {
           <div class="metric"><span>品类</span><strong>{{ dashboard.stats.categories || 0 }}</strong></div>
           <div class="metric"><span>产品</span><strong>{{ dashboard.stats.products || 0 }}</strong></div>
           <div class="metric"><span>设备</span><strong>{{ dashboard.stats.devices || 0 }}</strong></div>
-          <div class="metric"><span>在线设备</span><strong>{{ dashboard.stats.online_devices || 0 }}</strong></div>
-          <div class="metric"><span>属性日志</span><strong>{{ dashboard.stats.property_logs || 0 }}</strong></div>
+          <div class="metric"><span>品类物模型</span><strong>{{ dashboard.stats.category_thing_models || 0 }}</strong></div>
+          <div class="metric"><span>产品物模型</span><strong>{{ dashboard.stats.product_thing_models || 0 }}</strong></div>
           <div class="metric warn"><span>告警</span><strong>{{ dashboard.stats.alarms || 0 }}</strong></div>
         </section>
-
         <section class="main-grid">
           <section class="panel wide">
-            <div class="panel-head">
-              <h2>温度趋势</h2>
-              <span>来自 MQTT 模拟设备</span>
-            </div>
+            <div class="panel-head"><h2>温度趋势</h2><span>来自 MQTT 模拟设备</span></div>
             <div id="trend" class="chart"></div>
           </section>
-
           <section class="panel">
-            <div class="panel-head">
-              <h2>最新告警</h2>
-              <span>规则引擎输出</span>
-            </div>
+            <div class="panel-head"><h2>最新告警</h2><span>规则引擎输出</span></div>
             <el-table :data="dashboard.alarms" size="small" height="280">
               <el-table-column prop="device_name" label="设备" width="132" />
               <el-table-column prop="content" label="内容" min-width="220" />
@@ -250,7 +249,7 @@ onMounted(() => {
       <template v-if="activeView === 'categories'">
         <section class="workspace-grid">
           <section class="panel">
-            <div class="panel-head"><h2>创建品类</h2><span>Category</span></div>
+            <div class="panel-head"><h2>创建品类</h2><span>设备大类</span></div>
             <el-form label-position="top">
               <el-form-item label="品类名称"><el-input v-model="categoryForm.name" /></el-form-item>
               <el-form-item label="行业"><el-input v-model="categoryForm.industry" /></el-form-item>
@@ -273,9 +272,9 @@ onMounted(() => {
       <template v-if="activeView === 'products'">
         <section class="workspace-grid">
           <section class="panel">
-            <div class="panel-head"><h2>创建产品</h2><span>Product</span></div>
+            <div class="panel-head"><h2>创建产品</h2><span>品类的具体型号</span></div>
             <el-form label-position="top">
-              <el-form-item label="所属品类">
+              <el-form-item label="继承品类">
                 <el-select v-model="productForm.category_id">
                   <el-option v-for="item in categories" :key="item.id" :label="item.name" :value="item.id" />
                 </el-select>
@@ -287,12 +286,14 @@ onMounted(() => {
             </el-form>
           </section>
           <section class="panel table-panel">
-            <div class="panel-head"><h2>产品列表</h2><span>{{ products.length }} 条</span></div>
+            <div class="panel-head"><h2>产品列表</h2><span>产品继承品类物模型</span></div>
             <el-table :data="products" size="small" height="420">
               <el-table-column prop="product_key" label="ProductKey" min-width="150" />
               <el-table-column prop="name" label="名称" />
+              <el-table-column label="继承品类" min-width="130">
+                <template #default="{ row }">{{ categoryName(row.category_id) }}</template>
+              </el-table-column>
               <el-table-column prop="protocol" label="协议" width="90" />
-              <el-table-column prop="status" label="状态" width="110" />
             </el-table>
           </section>
         </section>
@@ -301,7 +302,7 @@ onMounted(() => {
       <template v-if="activeView === 'devices'">
         <section class="workspace-grid">
           <section class="panel">
-            <div class="panel-head"><h2>创建设备</h2><span>Device</span></div>
+            <div class="panel-head"><h2>创建设备</h2><span>产品的实例</span></div>
             <el-form label-position="top">
               <el-form-item label="所属产品">
                 <el-select v-model="deviceForm.product_id">
@@ -315,16 +316,14 @@ onMounted(() => {
             </el-form>
           </section>
           <section class="panel table-panel">
-            <div class="panel-head"><h2>设备列表</h2><span>{{ devices.length }} 台</span></div>
+            <div class="panel-head"><h2>设备列表</h2><span>设备拥有产品最终物模型</span></div>
             <el-table :data="devices" size="small" height="420">
               <el-table-column prop="device_name" label="DeviceName" min-width="150" />
               <el-table-column label="产品" min-width="140">
                 <template #default="{ row }">{{ productName(row.product_id) }}</template>
               </el-table-column>
               <el-table-column prop="status" label="状态" width="92">
-                <template #default="{ row }">
-                  <el-tag :type="row.status === 'online' ? 'success' : 'info'">{{ row.status }}</el-tag>
-                </template>
+                <template #default="{ row }"><el-tag :type="row.status === 'online' ? 'success' : 'info'">{{ row.status }}</el-tag></template>
               </el-table-column>
               <el-table-column prop="latest_properties.temperature" label="温度" width="86" />
               <el-table-column prop="latest_properties.humidity" label="湿度" width="86" />
@@ -334,39 +333,71 @@ onMounted(() => {
       </template>
 
       <template v-if="activeView === 'models'">
-        <section class="workspace-grid">
+        <section class="model-grid">
           <section class="panel">
-            <div class="panel-head"><h2>配置物模型</h2><span>Property / Command / Event</span></div>
+            <div class="panel-head"><h2>品类通用物模型</h2><span>发布后被产品继承</span></div>
             <el-form label-position="top">
-              <el-form-item label="所属产品">
-                <el-select v-model="modelForm.product_id">
-                  <el-option v-for="item in products" :key="item.id" :label="`${item.name} / ${item.product_key}`" :value="item.id" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="标识符"><el-input v-model="modelForm.identifier" /></el-form-item>
-              <el-form-item label="名称"><el-input v-model="modelForm.name" /></el-form-item>
-              <el-form-item label="类型">
-                <el-select v-model="modelForm.model_type">
-                  <el-option label="属性" value="property" />
-                  <el-option label="命令" value="command" />
-                  <el-option label="事件" value="event" />
+              <el-form-item label="所属品类">
+                <el-select v-model="categoryModelForm.category_id">
+                  <el-option v-for="item in categories" :key="item.id" :label="item.name" :value="item.id" />
                 </el-select>
               </el-form-item>
               <div class="two-cols">
-                <el-form-item label="数据类型"><el-input v-model="modelForm.data_type" /></el-form-item>
-                <el-form-item label="单位"><el-input v-model="modelForm.unit" /></el-form-item>
+                <el-form-item label="标识符"><el-input v-model="categoryModelForm.identifier" /></el-form-item>
+                <el-form-item label="名称"><el-input v-model="categoryModelForm.name" /></el-form-item>
               </div>
-              <el-button :loading="saving" type="primary" @click="createThingModel">保存物模型</el-button>
+              <div class="three-cols">
+                <el-form-item label="类型"><el-input v-model="categoryModelForm.model_type" /></el-form-item>
+                <el-form-item label="数据类型"><el-input v-model="categoryModelForm.data_type" /></el-form-item>
+                <el-form-item label="单位"><el-input v-model="categoryModelForm.unit" /></el-form-item>
+              </div>
+              <el-button :loading="saving" type="primary" @click="createCategoryThingModel">保存品类物模型</el-button>
             </el-form>
           </section>
+
+          <section class="panel">
+            <div class="panel-head"><h2>产品扩展物模型</h2><span>产品特有能力或覆盖项</span></div>
+            <el-form label-position="top">
+              <el-form-item label="所属产品">
+                <el-select v-model="productModelForm.product_id" @change="loadEffectiveThingModels">
+                  <el-option v-for="item in products" :key="item.id" :label="`${item.name} / ${item.product_key}`" :value="item.id" />
+                </el-select>
+              </el-form-item>
+              <div class="two-cols">
+                <el-form-item label="标识符"><el-input v-model="productModelForm.identifier" /></el-form-item>
+                <el-form-item label="名称"><el-input v-model="productModelForm.name" /></el-form-item>
+              </div>
+              <div class="three-cols">
+                <el-form-item label="类型"><el-input v-model="productModelForm.model_type" /></el-form-item>
+                <el-form-item label="数据类型"><el-input v-model="productModelForm.data_type" /></el-form-item>
+                <el-form-item label="单位"><el-input v-model="productModelForm.unit" /></el-form-item>
+              </div>
+              <el-button :loading="saving" type="primary" @click="createProductThingModel">保存产品物模型</el-button>
+            </el-form>
+          </section>
+
           <section class="panel table-panel">
-            <div class="panel-head"><h2>物模型列表</h2><span>{{ thingModels.length }} 条</span></div>
-            <el-table :data="thingModels" size="small" height="420">
+            <div class="panel-head"><h2>产品最终物模型</h2><span>品类继承 + 产品扩展</span></div>
+            <el-table :data="effectiveThingModels" size="small" height="280">
               <el-table-column prop="identifier" label="标识符" min-width="130" />
               <el-table-column prop="name" label="名称" />
+              <el-table-column prop="source" label="来源" width="90">
+                <template #default="{ row }"><el-tag :type="row.source === 'category' ? 'success' : 'warning'">{{ row.source === 'category' ? '品类继承' : '产品扩展' }}</el-tag></template>
+              </el-table-column>
               <el-table-column prop="model_type" label="类型" width="90" />
               <el-table-column prop="data_type" label="数据类型" width="100" />
-              <el-table-column prop="unit" label="单位" width="80" />
+              <el-table-column prop="unit" label="单位" width="70" />
+            </el-table>
+          </section>
+
+          <section class="panel table-panel">
+            <div class="panel-head"><h2>物模型原始定义</h2><span>左：品类，右：产品</span></div>
+            <el-table :data="[...categoryThingModels, ...thingModels]" size="small" height="280">
+              <el-table-column prop="identifier" label="标识符" min-width="130" />
+              <el-table-column prop="name" label="名称" />
+              <el-table-column prop="source" label="层级" width="90" />
+              <el-table-column prop="model_type" label="类型" width="90" />
+              <el-table-column prop="data_type" label="数据类型" width="100" />
             </el-table>
           </section>
         </section>
@@ -375,7 +406,7 @@ onMounted(() => {
       <template v-if="activeView === 'rules'">
         <section class="workspace-grid">
           <section class="panel">
-            <div class="panel-head"><h2>创建规则</h2><span>Rule Engine</span></div>
+            <div class="panel-head"><h2>创建规则</h2><span>基于最终物模型属性</span></div>
             <el-form label-position="top">
               <el-form-item label="所属产品">
                 <el-select v-model="ruleForm.product_id">
@@ -443,9 +474,9 @@ onMounted(() => {
             <pre class="answer">{{ agentAnswer || '可以问：为什么 demo-device-001 告警？物模型有哪些属性？MQTT 报文怎么发？设备为什么离线？' }}</pre>
           </section>
           <section class="panel">
-            <div class="panel-head"><h2>链路映射</h2><span>对照 BladeX 主干</span></div>
+            <div class="panel-head"><h2>继承链路</h2><span>对照 BladeX 主干</span></div>
             <div class="flow-list">
-              <span>品类</span><span>产品</span><span>物模型</span><span>设备</span><span>EMQX</span><span>data-worker</span><span>Postgres</span><span>规则告警</span><span>AI 解释</span>
+              <span>品类定义通用物模型</span><span>产品继承</span><span>产品扩展</span><span>设备实例化</span><span>上报按最终物模型校验</span><span>规则按属性触发</span><span>AI 解释</span>
             </div>
           </section>
         </section>

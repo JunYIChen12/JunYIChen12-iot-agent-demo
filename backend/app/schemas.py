@@ -34,6 +34,17 @@ class ThingModelCreate(BaseModel):
     access_mode: str = "read"
 
 
+class CategoryThingModelCreate(BaseModel):
+    category_id: int
+    identifier: str
+    name: str
+    model_type: str = "property"
+    data_type: str = "float"
+    unit: str = ""
+    access_mode: str = "read"
+    required: bool = True
+
+
 class RuleCreate(BaseModel):
     name: str
     product_id: int

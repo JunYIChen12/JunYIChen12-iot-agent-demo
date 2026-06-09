@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import AlarmLog, Device, DevicePropertyLog, Product, Rule, ThingModel
+from app.models import AlarmLog, CategoryThingModel, Device, DevicePropertyLog, Product, Rule, ThingModel
 
 
 OPS = {
@@ -34,9 +34,7 @@ def ingest_property_payload(
     if not device:
         return {"accepted": False, "errors": [f"Unknown deviceName: {device_name}"]}
 
-    model_rows = db.scalars(
-        select(ThingModel).where(ThingModel.product_id == product.id, ThingModel.model_type == "property")
-    ).all()
+    model_rows = effective_thing_models(db, product, "property")
     model_map = {m.identifier: m for m in model_rows}
     errors: list[str] = []
     accepted: dict[str, Any] = {}
@@ -75,6 +73,28 @@ def latest_logs(db: Session, limit: int = 30) -> list[DevicePropertyLog]:
     return db.scalars(
         select(DevicePropertyLog).order_by(desc(DevicePropertyLog.reported_at)).limit(limit)
     ).all()
+
+
+def effective_thing_models(
+    db: Session,
+    product: Product,
+    model_type: str | None = None,
+) -> list[CategoryThingModel | ThingModel]:
+    category_stmt = select(CategoryThingModel).where(CategoryThingModel.category_id == product.category_id)
+    product_stmt = select(ThingModel).where(ThingModel.product_id == product.id)
+    if model_type:
+        category_stmt = category_stmt.where(CategoryThingModel.model_type == model_type)
+        product_stmt = product_stmt.where(ThingModel.model_type == model_type)
+
+    inherited = db.scalars(category_stmt.order_by(CategoryThingModel.id)).all()
+    product_specific = db.scalars(product_stmt.order_by(ThingModel.id)).all()
+
+    merged: dict[tuple[str, str], CategoryThingModel | ThingModel] = {}
+    for row in inherited:
+        merged[(row.identifier, row.model_type)] = row
+    for row in product_specific:
+        merged[(row.identifier, row.model_type)] = row
+    return list(merged.values())
 
 
 def _validate_type(value: Any, data_type: str) -> bool:
