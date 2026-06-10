@@ -58,6 +58,7 @@ class RuleCreate(BaseModel):
 class HttpPropertyPost(BaseModel):
     id: str | None = None
     version: str = "1.0"
+    sys: dict[str, Any] = Field(default_factory=dict)
     params: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -29,16 +29,18 @@ flowchart TD
     A["Simulator / Device"] --> B["EMQX MQTT Broker"]
     B --> C["data-worker"]
     C --> D["Topic Parser"]
-    D --> E["Effective Thing Model Validator"]
-    E --> F["PostgreSQL Property Logs"]
-    E --> G["Device Status Update"]
-    E --> H["Threshold Rule Engine"]
-    H --> I["Alarm Logs"]
-    F --> J["FastAPI Dashboard API"]
-    G --> J
-    I --> J
-    J --> K["Vue Management Console"]
-    J --> L["AI Assistant"]
+    D --> E["Product Publish Gate"]
+    E --> F["Device Secret Validator"]
+    F --> G["Effective Thing Model Validator"]
+    G --> H["PostgreSQL Property Logs"]
+    G --> I["Device Status Update"]
+    G --> J["Threshold Rule Engine"]
+    J --> K["Alarm Logs"]
+    H --> L["FastAPI Dashboard API"]
+    I --> L
+    K --> L
+    L --> M["Vue Management Console"]
+    L --> N["AI Assistant"]
 ```
 
 ## Management Flow
@@ -64,6 +66,8 @@ The demo now models the BladeX-style hierarchy directly:
 - Product thing models store only product-specific extensions or overrides, such as `battery` for `TEMP_SENSOR`.
 - A device is an instance of a product and is validated against the effective model: category inherited models merged with product extensions.
 - When product and category define the same `identifier` and `model_type`, the product-level definition wins.
+- A product must be published/online before telemetry is accepted. This mirrors the platform rule that a draft model should not drive historical storage.
+- The demo validates the device credential inside the telemetry envelope so the full chain can be tested locally. Broker-level credential enforcement is still deferred.
 
 ## Topic Protocol
 

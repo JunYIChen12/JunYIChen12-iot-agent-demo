@@ -49,3 +49,6 @@ The thing model layer follows the hierarchy used by BladeX-style IoT platforms:
 ```text
 category common thing model -> product inherits and extends -> device owns the final product model
 ```
+
+Telemetry is accepted only when the product is published/online, the device
+secret matches, and every reported property exists in the effective thing model.

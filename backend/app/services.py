@@ -23,16 +23,25 @@ def ingest_property_payload(
     product_key: str,
     device_name: str,
     params: dict[str, Any],
+    sys: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     product = db.scalar(select(Product).where(Product.product_key == product_key))
     if not product:
         return {"accepted": False, "errors": [f"Unknown productKey: {product_key}"]}
+    if product.status not in {"online", "published"}:
+        return {
+            "accepted": False,
+            "errors": [f"Product {product_key} is not published"],
+        }
 
     device = db.scalar(
         select(Device).where(Device.product_id == product.id, Device.device_name == device_name)
     )
     if not device:
         return {"accepted": False, "errors": [f"Unknown deviceName: {device_name}"]}
+    credential_errors = _validate_device_credentials(product_key, device, sys or {})
+    if credential_errors:
+        return {"accepted": False, "errors": credential_errors}
 
     model_rows = effective_thing_models(db, product, "property")
     model_map = {m.identifier: m for m in model_rows}
@@ -67,6 +76,18 @@ def ingest_property_payload(
 
     db.commit()
     return {"accepted": bool(accepted), "properties": accepted, "errors": errors}
+
+
+def _validate_device_credentials(product_key: str, device: Device, sys: dict[str, Any]) -> list[str]:
+    expected_username = f"{device.device_name}&{product_key}"
+    username = sys.get("username")
+    device_secret = sys.get("deviceSecret") or sys.get("device_secret") or sys.get("password")
+    errors: list[str] = []
+    if username and username != expected_username:
+        errors.append("Invalid device username")
+    if device_secret != device.device_secret:
+        errors.append("Invalid device secret")
+    return errors
 
 
 def latest_logs(db: Session, limit: int = 30) -> list[DevicePropertyLog]:

@@ -29,7 +29,11 @@ def main() -> None:
             "id": str(int(time.time() * 1000)),
             "version": "1.0",
             "method": "thing.event.property.post",
-            "sys": {"ack": 0},
+            "sys": {
+                "ack": 0,
+                "username": f"{DEVICE_NAME}&{PRODUCT_KEY}",
+                "deviceSecret": DEVICE_SECRET,
+            },
             "params": {
                 "temperature": round(random.uniform(20, 62), 2),
                 "humidity": round(random.uniform(35, 85), 2),

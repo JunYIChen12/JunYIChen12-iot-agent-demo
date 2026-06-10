@@ -55,12 +55,16 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
         return
 
     params = payload.get("params", payload)
+    sys = payload.get("sys", {})
     if not isinstance(params, dict):
         print(f"invalid params topic={msg.topic}")
         return
+    if not isinstance(sys, dict):
+        print(f"invalid sys topic={msg.topic}")
+        return
 
     with Session(engine) as db:
-        result = ingest_property_payload(db, product_key, device_name, params)
+        result = ingest_property_payload(db, product_key, device_name, params, sys)
         print(f"ingest topic={msg.topic} result={result}")
 
 

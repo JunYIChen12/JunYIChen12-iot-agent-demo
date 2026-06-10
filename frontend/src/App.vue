@@ -19,6 +19,9 @@ const categoryThingModels = ref<any[]>([])
 const thingModels = ref<any[]>([])
 const effectiveThingModels = ref<any[]>([])
 const rules = ref<any[]>([])
+const selectedDeviceId = ref<number | null>(null)
+const selectedDeviceName = ref('')
+const deviceHistory = ref<any[]>([])
 
 const categoryForm = reactive({ name: '演示传感器品类', industry: '智能工业', scene: '环境监测' })
 const productForm = reactive({ category_id: 1, product_key: 'TEMP_SENSOR_002', name: '演示温湿度传感器', protocol: 'mqtt' })
@@ -80,6 +83,7 @@ async function refresh() {
     rules.value = ruleData
     syncDefaultIds()
     await loadEffectiveThingModels()
+    if (selectedDeviceId.value) await loadDeviceHistory(selectedDeviceId.value, selectedDeviceName.value)
     await nextTick()
     renderChart()
   } finally {
@@ -139,8 +143,28 @@ async function createProduct() {
   }
 }
 
+async function publishProduct(productId: number) {
+  saving.value = true
+  notice.value = ''
+  try {
+    await fetchJson(`/api/products/${productId}/publish`, { method: 'POST' })
+    notice.value = 'Product published'
+    await refresh()
+  } catch (error: any) {
+    notice.value = error.message || 'Publish failed'
+  } finally {
+    saving.value = false
+  }
+}
+
 function createDevice() {
   return createRecord('/api/devices', deviceForm, '设备')
+}
+
+async function loadDeviceHistory(deviceId: number, deviceName: string) {
+  selectedDeviceId.value = deviceId
+  selectedDeviceName.value = deviceName
+  deviceHistory.value = await fetchJson(`/api/devices/${deviceId}/property-logs?limit=200`)
 }
 
 function createCategoryThingModel() {
@@ -294,6 +318,13 @@ onMounted(() => {
                 <template #default="{ row }">{{ categoryName(row.category_id) }}</template>
               </el-table-column>
               <el-table-column prop="protocol" label="协议" width="90" />
+              <el-table-column prop="status" label="状态" width="100" />
+              <el-table-column label="发布" width="120">
+                <template #default="{ row }">
+                  <el-button v-if="!row.published" size="small" type="primary" @click="publishProduct(row.id)">发布</el-button>
+                  <el-tag v-else type="success">已上线</el-tag>
+                </template>
+              </el-table-column>
             </el-table>
           </section>
         </section>
@@ -327,6 +358,23 @@ onMounted(() => {
               </el-table-column>
               <el-table-column prop="latest_properties.temperature" label="温度" width="86" />
               <el-table-column prop="latest_properties.humidity" label="湿度" width="86" />
+              <el-table-column label="历史" width="110">
+                <template #default="{ row }">
+                  <el-button size="small" @click="loadDeviceHistory(row.id, row.device_name)">历史数据</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </section>
+          <section class="panel table-panel">
+            <div class="panel-head">
+              <h2>设备历史数据</h2>
+              <span>{{ selectedDeviceName || '请选择一台设备' }}</span>
+            </div>
+            <el-table :data="deviceHistory" size="small" height="360">
+              <el-table-column prop="reported_at" label="上报时间" min-width="190" />
+              <el-table-column prop="identifier" label="属性" min-width="140" />
+              <el-table-column prop="value" label="值" min-width="100" />
+              <el-table-column prop="product_key" label="ProductKey" min-width="150" />
             </el-table>
           </section>
         </section>

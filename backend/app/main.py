@@ -109,6 +109,17 @@ def create_product(payload: ProductCreate, db: Session = Depends(get_db)) -> dic
     return _product_dict(row)
 
 
+@app.post("/api/products/{product_id}/publish")
+def publish_product(product_id: int, db: Session = Depends(get_db)) -> dict:
+    row = db.get(Product, product_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Product not found")
+    row.status = "online"
+    db.commit()
+    db.refresh(row)
+    return _product_dict(row)
+
+
 @app.get("/api/devices")
 def list_devices(db: Session = Depends(get_db)) -> list[dict]:
     return [_device_dict(d) for d in db.scalars(select(Device).order_by(Device.id)).all()]
@@ -121,6 +132,26 @@ def create_device(payload: DeviceCreate, db: Session = Depends(get_db)) -> dict:
     db.commit()
     db.refresh(row)
     return _device_dict(row)
+
+
+@app.get("/api/devices/{device_id}/property-logs")
+def device_property_logs(device_id: int, limit: int = 100, db: Session = Depends(get_db)) -> list[dict]:
+    device = db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    product = db.get(Product, device.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    rows = db.scalars(
+        select(DevicePropertyLog)
+        .where(
+            DevicePropertyLog.product_key == product.product_key,
+            DevicePropertyLog.device_name == device.device_name,
+        )
+        .order_by(desc(DevicePropertyLog.reported_at))
+        .limit(min(max(limit, 1), 500))
+    ).all()
+    return [_log_dict(row) for row in rows]
 
 
 @app.get("/api/thing-models")
@@ -169,7 +200,7 @@ def http_property_post(
     payload: HttpPropertyPost,
     db: Session = Depends(get_db),
 ) -> dict:
-    result = ingest_property_payload(db, product_key, device_name, payload.params)
+    result = ingest_property_payload(db, product_key, device_name, payload.params, payload.sys)
     if not result["accepted"]:
         raise HTTPException(status_code=400, detail=result)
     return {"code": 200, "message": "success", "data": result}
@@ -192,6 +223,7 @@ def _product_dict(row: Product) -> dict:
         "name": row.name,
         "protocol": row.protocol,
         "status": row.status,
+        "published": row.status in {"online", "published"},
     }
 
 

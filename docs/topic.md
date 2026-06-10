@@ -15,7 +15,11 @@ Payload:
   "id": "1700000000000",
   "version": "1.0",
   "method": "thing.event.property.post",
-  "sys": { "ack": 0 },
+  "sys": {
+    "ack": 0,
+    "username": "demo-device-001&TEMP_SENSOR",
+    "deviceSecret": "demo-secret"
+  },
   "params": {
     "temperature": 25.5,
     "humidity": 60.2,
@@ -23,6 +27,14 @@ Payload:
   }
 }
 ```
+
+The backend accepts the report only when:
+
+- the product exists and is published/online;
+- the device exists under that product;
+- `sys.username` is `{deviceName}&{productKey}` when provided;
+- `sys.deviceSecret` matches the registered device secret;
+- every `params` field exists in the effective thing model.
 
 ## HTTP Property Report
 

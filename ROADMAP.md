@@ -27,8 +27,10 @@ Status: in progress
 - Thing model create/list page: landed in `v0.2.0-dev`.
 - Rule create/list page: landed in `v0.2.0-dev`.
 - AI alarm explanation fix: landed in `v0.2.0-dev`.
-- Manual property report testing: next.
-- Broker credential alignment for demo devices: next.
+- Manual property report testing: landed in `v0.2.0-dev`.
+- Product publish gate for telemetry ingest: landed in `v0.2.0-dev`.
+- Demo-layer device secret validation: landed in `v0.2.0-dev`.
+- Broker credential enforcement: next.
 
 ## v0.3.0 - Device Control
 
