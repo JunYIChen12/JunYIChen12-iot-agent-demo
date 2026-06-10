@@ -180,6 +180,83 @@ h1 {
   overflow: hidden;
 }
 
+.device-detail {
+  grid-column: 1 / -1;
+}
+
+.detail-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.detail-summary div,
+.property-card {
+  border: 1px solid #e6eaf2;
+  border-radius: 6px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.detail-summary span,
+.property-meta {
+  display: block;
+  color: #667085;
+  font-size: 12px;
+}
+
+.detail-summary strong {
+  display: block;
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+.property-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.property-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.property-value {
+  margin: 10px 0;
+  font-weight: 700;
+}
+
+.history-section {
+  margin-top: 14px;
+}
+
+.payload-code {
+  display: block;
+  max-height: 72px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.mqtt-code {
+  margin: 12px 0 0;
+  padding: 12px;
+  border-radius: 6px;
+  background: #101828;
+  color: #d7e0ef;
+  overflow: auto;
+}
+
+.empty-detail {
+  display: grid;
+  gap: 8px;
+  color: #667085;
+}
+
 .panel-head {
   display: flex;
   justify-content: space-between;

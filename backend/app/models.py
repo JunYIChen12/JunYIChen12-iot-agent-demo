@@ -114,6 +114,18 @@ class DevicePropertyLog(Base):
     reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
+class DeviceMessageLog(Base):
+    __tablename__ = "device_message_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_key: Mapped[str] = mapped_column(String(80), index=True)
+    device_name: Mapped[str] = mapped_column(String(120), index=True)
+    topic: Mapped[str] = mapped_column(String(300), index=True)
+    direction: Mapped[str] = mapped_column(String(40), default="up")
+    payload: Mapped[dict] = mapped_column(JSONB, default=dict)
+    reported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+
 class Rule(Base):
     __tablename__ = "rules"
 

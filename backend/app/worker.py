@@ -64,7 +64,7 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage) -> None:
         return
 
     with Session(engine) as db:
-        result = ingest_property_payload(db, product_key, device_name, params, sys)
+        result = ingest_property_payload(db, product_key, device_name, params, sys, msg.topic, payload)
         print(f"ingest topic={msg.topic} result={result}")
 
 

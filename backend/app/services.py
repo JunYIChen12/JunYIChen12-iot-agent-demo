@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from app.models import AlarmLog, CategoryThingModel, Device, DevicePropertyLog, Product, Rule, ThingModel
+from app.models import AlarmLog, CategoryThingModel, Device, DeviceMessageLog, DevicePropertyLog, Product, Rule, ThingModel
 
 
 OPS = {
@@ -24,6 +24,8 @@ def ingest_property_payload(
     device_name: str,
     params: dict[str, Any],
     sys: dict[str, Any] | None = None,
+    topic: str | None = None,
+    raw_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     product = db.scalar(select(Product).where(Product.product_key == product_key))
     if not product:
@@ -42,6 +44,15 @@ def ingest_property_payload(
     credential_errors = _validate_device_credentials(product_key, device, sys or {})
     if credential_errors:
         return {"accepted": False, "errors": credential_errors}
+    db.add(
+        DeviceMessageLog(
+            product_key=product_key,
+            device_name=device_name,
+            topic=topic or f"/demo/sys/{product_key}/{device_name}/thing/event/property/post",
+            direction="up",
+            payload=raw_payload or {"method": "thing.event.property.post", "sys": sys or {}, "params": params},
+        )
+    )
 
     model_rows = effective_thing_models(db, product, "property")
     model_map = {m.identifier: m for m in model_rows}

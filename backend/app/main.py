@@ -5,7 +5,17 @@ from sqlalchemy.orm import Session
 
 from app.agent import answer_agent_message
 from app.db import Base, engine, get_db
-from app.models import AlarmLog, Category, CategoryThingModel, Device, DevicePropertyLog, Product, Rule, ThingModel
+from app.models import (
+    AlarmLog,
+    Category,
+    CategoryThingModel,
+    Device,
+    DeviceMessageLog,
+    DevicePropertyLog,
+    Product,
+    Rule,
+    ThingModel,
+)
 from app.schemas import (
     AgentRequest,
     CategoryCreate,
@@ -135,7 +145,49 @@ def create_device(payload: DeviceCreate, db: Session = Depends(get_db)) -> dict:
 
 
 @app.get("/api/devices/{device_id}/property-logs")
-def device_property_logs(device_id: int, limit: int = 100, db: Session = Depends(get_db)) -> list[dict]:
+def device_property_logs(
+    device_id: int,
+    identifier: str | None = None,
+    limit: int = 100,
+    db: Session = Depends(get_db),
+) -> list[dict]:
+    device = db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    product = db.get(Product, device.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    stmt = select(DevicePropertyLog).where(
+        DevicePropertyLog.product_key == product.product_key,
+        DevicePropertyLog.device_name == device.device_name,
+    )
+    if identifier:
+        stmt = stmt.where(DevicePropertyLog.identifier == identifier)
+    rows = db.scalars(stmt.order_by(desc(DevicePropertyLog.reported_at)).limit(min(max(limit, 1), 500))).all()
+    return [_log_dict(row) for row in rows]
+
+
+@app.get("/api/devices/{device_id}/detail")
+def device_detail(device_id: int, db: Session = Depends(get_db)) -> dict:
+    device = db.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    product = db.get(Product, device.product_id)
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    category = db.get(Category, product.category_id)
+    models = effective_thing_models(db, product)
+    return {
+        "device": _device_detail_dict(device),
+        "product": _product_dict(product),
+        "category": _category_dict(category) if category else None,
+        "thing_models": [_effective_thing_model_dict(row) for row in models],
+        "mqtt": _mqtt_dict(product, device),
+    }
+
+
+@app.get("/api/devices/{device_id}/message-logs")
+def device_message_logs(device_id: int, limit: int = 100, db: Session = Depends(get_db)) -> list[dict]:
     device = db.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
@@ -143,15 +195,15 @@ def device_property_logs(device_id: int, limit: int = 100, db: Session = Depends
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     rows = db.scalars(
-        select(DevicePropertyLog)
+        select(DeviceMessageLog)
         .where(
-            DevicePropertyLog.product_key == product.product_key,
-            DevicePropertyLog.device_name == device.device_name,
+            DeviceMessageLog.product_key == product.product_key,
+            DeviceMessageLog.device_name == device.device_name,
         )
-        .order_by(desc(DevicePropertyLog.reported_at))
+        .order_by(desc(DeviceMessageLog.reported_at))
         .limit(min(max(limit, 1), 500))
     ).all()
-    return [_log_dict(row) for row in rows]
+    return [_message_log_dict(row) for row in rows]
 
 
 @app.get("/api/thing-models")
@@ -200,7 +252,22 @@ def http_property_post(
     payload: HttpPropertyPost,
     db: Session = Depends(get_db),
 ) -> dict:
-    result = ingest_property_payload(db, product_key, device_name, payload.params, payload.sys)
+    raw_payload = {
+        "id": payload.id,
+        "version": payload.version,
+        "method": "thing.event.property.post",
+        "sys": payload.sys,
+        "params": payload.params,
+    }
+    result = ingest_property_payload(
+        db,
+        product_key,
+        device_name,
+        payload.params,
+        payload.sys,
+        f"/demo/sys/{product_key}/{device_name}/thing/event/property/post",
+        raw_payload,
+    )
     if not result["accepted"]:
         raise HTTPException(status_code=400, detail=result)
     return {"code": 200, "message": "success", "data": result}
@@ -238,6 +305,12 @@ def _device_dict(row: Device) -> dict:
         "last_report_at": row.last_report_at,
         "latest_properties": row.latest_properties or {},
     }
+
+
+def _device_detail_dict(row: Device) -> dict:
+    data = _device_dict(row)
+    data["device_secret"] = row.device_secret
+    return data
 
 
 def _thing_model_dict(row: ThingModel) -> dict:
@@ -322,4 +395,29 @@ def _alarm_dict(row: AlarmLog) -> dict:
         "device_name": row.device_name,
         "content": row.content,
         "triggered_at": row.triggered_at,
+    }
+
+
+def _message_log_dict(row: DeviceMessageLog) -> dict:
+    return {
+        "id": row.id,
+        "product_key": row.product_key,
+        "device_name": row.device_name,
+        "topic": row.topic,
+        "direction": row.direction,
+        "payload": row.payload,
+        "reported_at": row.reported_at,
+    }
+
+
+def _mqtt_dict(product: Product, device: Device) -> dict:
+    return {
+        "clientId": f"{product.product_key}.{device.device_name}",
+        "username": f"{device.device_name}&{product.product_key}",
+        "password": device.device_secret,
+        "host": "localhost",
+        "port": 1883,
+        "topic": f"/demo/sys/{product.product_key}/{device.device_name}/thing/event/property/post",
+        "replyTopic": f"/demo/sys/{product.product_key}/{device.device_name}/thing/event/property/post_reply",
+        "note": "Demo uses the device secret directly. BladeX production auth signs a temporary MQTT password with HMAC.",
     }

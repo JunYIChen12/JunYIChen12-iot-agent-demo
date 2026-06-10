@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import * as echarts from 'echarts'
-import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref } from 'vue'
 
 const apiBase = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -22,6 +22,11 @@ const rules = ref<any[]>([])
 const selectedDeviceId = ref<number | null>(null)
 const selectedDeviceName = ref('')
 const deviceHistory = ref<any[]>([])
+const deviceDetail = ref<any | null>(null)
+const deviceDetailTab = ref('properties')
+const selectedProperty = ref('')
+const propertyHistory = ref<any[]>([])
+const messageLogs = ref<any[]>([])
 
 const categoryForm = reactive({ name: '演示传感器品类', industry: '智能工业', scene: '环境监测' })
 const productForm = reactive({ category_id: 1, product_key: 'TEMP_SENSOR_002', name: '演示温湿度传感器', protocol: 'mqtt' })
@@ -31,6 +36,7 @@ const productModelForm = reactive({ product_id: 1, identifier: 'battery', name: 
 const ruleForm = reactive({ product_id: 1, name: '温度过高告警', identifier: 'temperature', operator: '>', threshold: 50, message: '温度超过 50C，请检查设备环境', enabled: true })
 
 let chart: echarts.ECharts | null = null
+let refreshTimer: number | undefined
 
 const navItems = [
   { key: 'overview', label: '总览' },
@@ -83,7 +89,7 @@ async function refresh() {
     rules.value = ruleData
     syncDefaultIds()
     await loadEffectiveThingModels()
-    if (selectedDeviceId.value) await loadDeviceHistory(selectedDeviceId.value, selectedDeviceName.value)
+    if (selectedDeviceId.value) await refreshDeviceDetail()
     await nextTick()
     renderChart()
   } finally {
@@ -161,10 +167,41 @@ function createDevice() {
   return createRecord('/api/devices', deviceForm, '设备')
 }
 
+async function openDeviceDetail(row: any) {
+  selectedDeviceId.value = row.id
+  selectedDeviceName.value = row.device_name
+  deviceDetailTab.value = 'properties'
+  selectedProperty.value = ''
+  propertyHistory.value = []
+  await refreshDeviceDetail()
+}
+
 async function loadDeviceHistory(deviceId: number, deviceName: string) {
   selectedDeviceId.value = deviceId
   selectedDeviceName.value = deviceName
   deviceHistory.value = await fetchJson(`/api/devices/${deviceId}/property-logs?limit=200`)
+}
+
+async function refreshDeviceDetail() {
+  if (!selectedDeviceId.value) return
+  const deviceId = selectedDeviceId.value
+  const [detail, logs, history] = await Promise.all([
+    fetchJson(`/api/devices/${deviceId}/detail`),
+    fetchJson(`/api/devices/${deviceId}/message-logs?limit=100`),
+    fetchJson(`/api/devices/${deviceId}/property-logs?limit=200`),
+  ])
+  deviceDetail.value = detail
+  messageLogs.value = logs
+  deviceHistory.value = history
+  if (selectedProperty.value) {
+    propertyHistory.value = await fetchJson(`/api/devices/${deviceId}/property-logs?identifier=${encodeURIComponent(selectedProperty.value)}&limit=200`)
+  }
+}
+
+async function loadPropertyHistory(identifier: string) {
+  if (!selectedDeviceId.value) return
+  selectedProperty.value = identifier
+  propertyHistory.value = await fetchJson(`/api/devices/${selectedDeviceId.value}/property-logs?identifier=${encodeURIComponent(identifier)}&limit=200`)
 }
 
 function createCategoryThingModel() {
@@ -217,7 +254,11 @@ function categoryName(categoryId: number) {
 
 onMounted(() => {
   refresh()
-  window.setInterval(refresh, 5000)
+  refreshTimer = window.setInterval(refresh, 5000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) window.clearInterval(refreshTimer)
 })
 </script>
 
@@ -356,26 +397,69 @@ onMounted(() => {
               <el-table-column prop="status" label="状态" width="92">
                 <template #default="{ row }"><el-tag :type="row.status === 'online' ? 'success' : 'info'">{{ row.status }}</el-tag></template>
               </el-table-column>
-              <el-table-column prop="latest_properties.temperature" label="温度" width="86" />
-              <el-table-column prop="latest_properties.humidity" label="湿度" width="86" />
-              <el-table-column label="历史" width="110">
+              <el-table-column prop="last_report_at" label="最后上报" min-width="170" />
+              <el-table-column label="操作" width="100">
                 <template #default="{ row }">
-                  <el-button size="small" @click="loadDeviceHistory(row.id, row.device_name)">历史数据</el-button>
+                  <el-button size="small" type="primary" @click="openDeviceDetail(row)">详情</el-button>
                 </template>
               </el-table-column>
             </el-table>
           </section>
-          <section class="panel table-panel">
-            <div class="panel-head">
-              <h2>设备历史数据</h2>
-              <span>{{ selectedDeviceName || '请选择一台设备' }}</span>
+          <section class="panel device-detail" v-if="deviceDetail">
+            <div class="panel-head"><h2>设备详情</h2><span>{{ deviceDetail.device.device_name }}</span></div>
+            <div class="detail-summary">
+              <div><span>ProductName</span><strong>{{ deviceDetail.product.name }}</strong></div>
+              <div><span>ProductKey</span><strong>{{ deviceDetail.product.product_key }}</strong></div>
+              <div><span>DeviceName</span><strong>{{ deviceDetail.device.device_name }}</strong></div>
+              <div><span>DeviceSecret</span><strong>{{ deviceDetail.device.device_secret }}</strong></div>
+              <div><span>状态</span><strong>{{ deviceDetail.device.status }}</strong></div>
+              <div><span>最后上报</span><strong>{{ deviceDetail.device.last_report_at || '-' }}</strong></div>
             </div>
-            <el-table :data="deviceHistory" size="small" height="360">
-              <el-table-column prop="reported_at" label="上报时间" min-width="190" />
-              <el-table-column prop="identifier" label="属性" min-width="140" />
-              <el-table-column prop="value" label="值" min-width="100" />
-              <el-table-column prop="product_key" label="ProductKey" min-width="150" />
-            </el-table>
+            <el-tabs v-model="deviceDetailTab">
+              <el-tab-pane label="设备信息" name="info">
+                <el-descriptions :column="2" border size="small">
+                  <el-descriptions-item label="唯一编号">{{ deviceDetail.device.unique_no }}</el-descriptions-item>
+                  <el-descriptions-item label="所属产品">{{ deviceDetail.product.name }}</el-descriptions-item>
+                  <el-descriptions-item label="所属品类">{{ deviceDetail.category?.name || '-' }}</el-descriptions-item>
+                  <el-descriptions-item label="接入协议">{{ deviceDetail.product.protocol }}</el-descriptions-item>
+                </el-descriptions>
+              </el-tab-pane>
+              <el-tab-pane label="物模型数据" name="properties">
+                <div class="property-grid">
+                  <div v-for="model in deviceDetail.thing_models.filter((item: any) => item.model_type === 'property')" :key="model.identifier" class="property-card">
+                    <div class="property-title"><strong>{{ model.name }}</strong><el-tag size="small">{{ model.data_type }}</el-tag></div>
+                    <div class="property-meta">标识符：{{ model.identifier }}</div>
+                    <div class="property-meta">来源：{{ model.source === 'category' ? '品类继承' : '产品扩展' }}</div>
+                    <div class="property-value">最新值：{{ deviceDetail.device.latest_properties?.[model.identifier] ?? '-' }} {{ model.unit }}</div>
+                    <el-button size="small" @click="loadPropertyHistory(model.identifier)">历史数据</el-button>
+                  </div>
+                </div>
+                <section class="history-section">
+                  <div class="panel-head"><h2>属性历史数据</h2><span>{{ selectedProperty || '请选择属性' }}</span></div>
+                  <el-table :data="propertyHistory" size="small" height="260">
+                    <el-table-column prop="reported_at" label="上报时间" min-width="190" />
+                    <el-table-column prop="identifier" label="属性" min-width="140" />
+                    <el-table-column prop="value" label="值" min-width="100" />
+                  </el-table>
+                </section>
+              </el-tab-pane>
+              <el-tab-pane label="设备日志" name="logs">
+                <el-table :data="messageLogs" size="small" height="360">
+                  <el-table-column prop="reported_at" label="更新时间" min-width="190" />
+                  <el-table-column prop="topic" label="Topic" min-width="260" />
+                  <el-table-column label="消息内容" min-width="360">
+                    <template #default="{ row }"><code class="payload-code">{{ JSON.stringify(row.payload) }}</code></template>
+                  </el-table-column>
+                </el-table>
+              </el-tab-pane>
+              <el-tab-pane label="MQTT 协议" name="mqtt">
+                <el-alert title="Demo 参数用于本地调试；BladeX 生产环境需要按设备三元组生成 HMAC 密码。" type="warning" :closable="false" />
+                <pre class="mqtt-code">{{ JSON.stringify(deviceDetail.mqtt, null, 2) }}</pre>
+              </el-tab-pane>
+            </el-tabs>
+          </section>
+          <section class="panel" v-else>
+            <div class="empty-detail"><h2>设备详情</h2><p>请选择设备列表中的“详情”，查看物模型数据、属性历史、设备日志和 MQTT 参数。</p></div>
           </section>
         </section>
       </template>
